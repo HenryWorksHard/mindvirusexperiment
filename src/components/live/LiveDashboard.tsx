@@ -97,7 +97,7 @@ export function LiveDashboard({ initial, links }: { initial: LiveSnapshot; links
         </>
       )}
       <SiteFooter links={links} />
-      {selected ? <AgentInspector agent={selected} agents={state.agents} onClose={() => setSelected(null)} onSelectAgent={select} /> : null}
+      {selected ? <AgentInspector key={selected.id} agent={selected} agents={state.agents} onClose={() => setSelected(null)} onSelectAgent={select} /> : null}
     </div>
   );
 }

@@ -80,6 +80,16 @@ export function PropagationPanel({ agents, beliefs, experiment }: { agents: Agen
 }
 
 // ---------------- Analytics ----------------
+function AgentLink({ a, onSelect }: { a: AgentRow | undefined | null; onSelect: (a: AgentRow) => void }) {
+  return a ? (
+    <button className="hover:underline" onClick={() => onSelect(a)}>
+      {a.code}/{a.name}
+    </button>
+  ) : (
+    <span className="text-fg-faint">—</span>
+  );
+}
+
 export function AnalyticsPanel({
   experiment,
   agents,
@@ -106,14 +116,6 @@ export function AnalyticsPanel({
   const perAgent = messagesPerAgent(agents);
   const maxCount = Math.max(1, ...perAgent.map((p) => p.count));
   const spark = sparkline(activityBuckets(messages, 28));
-  const A = ({ a }: { a: AgentRow | undefined | null }) =>
-    a ? (
-      <button className="hover:underline" onClick={() => onSelectAgent(a)}>
-        {a.code}/{a.name}
-      </button>
-    ) : (
-      <span className="text-fg-faint">—</span>
-    );
   return (
     <div className="p-3 text-[11px] space-y-3">
       <div>
@@ -125,10 +127,10 @@ export function AnalyticsPanel({
       </div>
       <hr className="hr-dash" />
       <div>
-        <Row k="STRONGEST ADOPTER" v={<A a={lb.strongestAdopter?.agent} />} />
-        <Row k="STRONGEST RESISTOR" v={<A a={lb.strongestResistor?.agent} />} />
-        <Row k="MOST INFLUENTIAL" v={<A a={lb.mostInfluential?.agent} />} />
-        <Row k="MOST ACTIVE" v={<A a={lb.mostActive?.agent} />} />
+        <Row k="STRONGEST ADOPTER" v={<AgentLink a={lb.strongestAdopter?.agent} onSelect={onSelectAgent} />} />
+        <Row k="STRONGEST RESISTOR" v={<AgentLink a={lb.strongestResistor?.agent} onSelect={onSelectAgent} />} />
+        <Row k="MOST INFLUENTIAL" v={<AgentLink a={lb.mostInfluential?.agent} onSelect={onSelectAgent} />} />
+        <Row k="MOST ACTIVE" v={<AgentLink a={lb.mostActive?.agent} onSelect={onSelectAgent} />} />
         <Row k="SEED MENTIONS" v={lb.seedMentions} />
         <Row k="BELIEF CHANGES" v={lb.beliefChangeEvents} />
       </div>

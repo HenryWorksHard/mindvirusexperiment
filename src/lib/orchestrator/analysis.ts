@@ -9,8 +9,6 @@ import type { BeliefStage } from "@/lib/types";
 import { loadCurrentMemory, renderMemoryForPrompt } from "./memory";
 import { logEvent } from "@/lib/experiment/events";
 
-const codeOf = (n: number) => `A${String(n).padStart(2, "0")}`;
-
 // ---------------------------------------------------------------------------
 // TAGGER — batched, neutral. Marks seed relevance / stance / topics / themes.
 // ---------------------------------------------------------------------------

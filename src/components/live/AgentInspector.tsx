@@ -12,8 +12,6 @@ export function AgentInspector({ agent, onClose, onSelectAgent, agents }: { agen
 
   useEffect(() => {
     let alive = true;
-    setDetail(null);
-    setErr(null);
     fetch(`/api/public/agent/${agent.id}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: AgentDetail) => alive && setDetail(d))
@@ -218,18 +216,20 @@ function Section({ title, right, children }: { title: string; right?: string; ch
   );
 }
 
+function List({ title, items }: { title: string; items: string[] }) {
+  return items?.length ? (
+    <div className="mb-2">
+      <div className="text-fg-dim">{title}</div>
+      {items.map((s, i) => (
+        <div key={i} className="pl-3">
+          - {s}
+        </div>
+      ))}
+    </div>
+  ) : null;
+}
+
 export function MemoryView({ m }: { m: AgentMemory }) {
-  const List = ({ title, items }: { title: string; items: string[] }) =>
-    items?.length ? (
-      <div className="mb-2">
-        <div className="text-fg-dim">{title}</div>
-        {items.map((s, i) => (
-          <div key={i} className="pl-3">
-            - {s}
-          </div>
-        ))}
-      </div>
-    ) : null;
   const empty =
     !m.core_beliefs?.length && !m.current_stances?.length && !m.important_arguments?.length && !m.open_questions?.length && !m.ideas_worth_preserving?.length && !m.notes_to_future_self?.length && !Object.keys(m.agent_relationships ?? {}).length && !m.significant_events?.length;
   if (empty) return <div className="text-fg-faint">empty — nothing recorded yet</div>;
