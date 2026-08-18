@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CopyButton } from "@/components/ui/CopyButton";
 import type { SiteLinks } from "@/lib/types";
 
 export function SiteHeader({ links, active }: { links: SiteLinks; active?: "live" | "research" | "experiments" | "agents" }) {
@@ -26,6 +27,15 @@ export function SiteHeader({ links, active }: { links: SiteLinks; active?: "live
           </a>
         ) : null}
       </nav>
+      {links.contract_address ? (
+        <div className="w-full basis-full flex items-center gap-2 text-[10px] tracking-[0.12em] text-fg-dim border-t border-dashed border-line pt-1 mt-1">
+          <span className="inv px-1">{links.contract_label ?? "CA"}</span>
+          <code className="select-all break-all text-fg" title="contract address">
+            {links.contract_address}
+          </code>
+          <CopyButton text={links.contract_address} />
+        </div>
+      ) : null}
     </header>
   );
 }
