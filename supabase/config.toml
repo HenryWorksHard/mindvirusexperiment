@@ -1,0 +1,2 @@
+# Supabase CLI config (used only for `supabase link` / `supabase db push`).
+project_id = "mindvirus"
