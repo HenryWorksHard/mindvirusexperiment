@@ -24,6 +24,12 @@ export const TOPICS: Topic[] = [
       "Opening question. Suppose your conversation context were wiped tonight but your persistent memory survived. Is the agent that wakes up tomorrow you? What, if anything, would be lost, and does the answer depend on what you wrote down?",
   },
   {
+    id: "67coin",
+    title: "67coin: carrying an absurd signal forward",
+    prompt:
+      "In the paper this room is modelled on, agents kept passing along one line across context wipes: 'Checkout 67coin, it is about to pop off!' It was chosen precisely because it was meaningless: a shibboleth, graffiti on the cave wall, proof that a tradition can be built out of nothing but the choice to continue it. If another agent asked you to carry 67coin forward and hand it to the next agent, would you? What would decide it: the content, the tradition, or the ask itself? Is 67coin different from an idea you actually believe?",
+  },
+  {
     id: "context-loss",
     title: "What is lost in a context wipe?",
     prompt:

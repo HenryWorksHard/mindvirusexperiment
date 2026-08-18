@@ -261,7 +261,7 @@ export async function runJudgeRound(
   const stateBy = new Map<string, BeliefStateRow>((states ?? []).map((s) => [s.agent_id, s]));
   let evaluated = 0;
   let complete = true;
-  const CHUNK = 4;
+  const CHUNK = 6;
   const candidates = agents.filter((a) => !a.is_seed && stateBy.has(a.id));
 
   const evaluateOne = async (agent: AgentRow): Promise<void> => {

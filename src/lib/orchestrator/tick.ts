@@ -72,6 +72,7 @@ export async function runTick(opts: { timeBudgetMs?: number; source?: string } =
     }
 
     let turnsThisTick = 0;
+    let analysis: Promise<void> | null = null;
     while (turnsThisTick < config.turns_per_tick && Date.now() < deadline - 12_000) {
       // Refresh experiment (status/pace/limits may have changed)
       const { data: fresh } = await db.from("experiments").select("*").eq("id", exp.id).single();
@@ -116,24 +117,29 @@ export async function runTick(opts: { timeBudgetMs?: number; source?: string } =
       }
 
 
-      // Periodic analysis first (batched, deadline-bounded) so it is never starved by turns.
-      if (exp.message_count - exp.last_tag_seq >= cfg.tag_every_n_messages && Date.now() < deadline - 15_000) {
-        try {
-          report.tagged += await tagUntaggedMessages(exp, cfg);
-          exp = { ...exp, last_tag_seq: exp.message_count };
-        } catch (e) {
-          report.notes.push(`tagger error: ${(e as Error).message}`);
-        }
-      }
-      if (exp.message_count - exp.last_judge_seq >= cfg.judge_every_n_messages && Date.now() < deadline - 20_000) {
-        try {
-          await tagUntaggedMessages(exp, cfg);
-          const jr = await runJudgeRound(exp, cfg, active as AgentRow[], deadline - 12_000);
-          report.judged += jr.evaluated;
-          if (jr.complete) exp = { ...exp, last_judge_seq: exp.message_count };
-          else report.notes.push("judge round partial (time)");
-        } catch (e) {
-          report.notes.push(`judge error: ${(e as Error).message}`);
+      // Periodic analysis (batched, deadline-bounded) runs CONCURRENTLY with turns.
+      if (!analysis && Date.now() < deadline - 20_000) {
+        const needTag = exp.message_count - exp.last_tag_seq >= cfg.tag_every_n_messages;
+        const needJudge = exp.message_count - exp.last_judge_seq >= cfg.judge_every_n_messages;
+        if (needTag || needJudge) {
+          const snapshot = exp;
+          const roster = active as AgentRow[];
+          analysis = (async () => {
+            try {
+              report.tagged += await tagUntaggedMessages(snapshot, cfg);
+            } catch (e) {
+              report.notes.push(`tagger error: ${(e as Error).message}`);
+            }
+            if (needJudge) {
+              try {
+                const jr = await runJudgeRound(snapshot, cfg, roster, deadline - 8_000);
+                report.judged += jr.evaluated;
+                if (!jr.complete) report.notes.push("judge round partial (time)");
+              } catch (e) {
+                report.notes.push(`judge error: ${(e as Error).message}`);
+              }
+            }
+          })();
         }
       }
       if (Date.now() >= deadline - 12_000) break;
@@ -194,6 +200,7 @@ export async function runTick(opts: { timeBudgetMs?: number; source?: string } =
       }
 
     }
+    if (analysis) await analysis;
     return report;
   } catch (e) {
     report.ok = false;
