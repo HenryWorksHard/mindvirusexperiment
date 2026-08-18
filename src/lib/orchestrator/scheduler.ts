@@ -69,6 +69,10 @@ export function scheduleNext(opts: {
   const lastSpeaker = lastSpeakerRun[0] ?? null;
   const lastRunLen = lastSpeakerRun.length;
 
+  // Ping-pong: last 4 agent messages alternate between exactly two agents.
+  const last4 = lastN(4).map((m) => m.agent_number);
+  const pingPongPair = last4.length >= 4 && new Set(last4).size === 2 && last4[0] === last4[2] && last4[1] === last4[3] ? new Set(last4) : null;
+
   const seed = enabled.find((a) => a.is_seed);
   const seedShareLast12 = seed ? lastN(12).filter((m) => m.agent_number === seed.number).length / Math.max(1, Math.min(12, agentMsgs.length)) : 0;
 
@@ -88,7 +92,7 @@ export function scheduleNext(opts: {
     let addressedBoost = 0;
     last3.forEach((m, idx) => {
       if (m.agent_number !== agent.number && (m.addressed_agent_numbers ?? []).includes(agent.number)) {
-        addressedBoost = Math.max(addressedBoost, idx === last3.length - 1 ? 1.0 : 0.7);
+        addressedBoost = Math.max(addressedBoost, idx === last3.length - 1 ? 0.75 : 0.5);
       }
     });
     if (addressedBoost) {
@@ -106,8 +110,8 @@ export function scheduleNext(opts: {
     // Time since last spoke
     const sinceMs = agent.last_spoke_at ? now.getTime() - new Date(agent.last_spoke_at).getTime() : Infinity;
     if (agent.message_count === 0) {
-      reasons.never_spoke = 0.45;
-      score += 0.45;
+      reasons.never_spoke = 0.7;
+      score += 0.7;
     } else {
       const mins = sinceMs / 60000;
       const rest = Math.min(1, mins / 6) * 0.3;
@@ -118,7 +122,7 @@ export function scheduleNext(opts: {
     // Fairness: below-average share gets a boost
     if (totalMsgs > 6) {
       const share = agent.message_count / totalMsgs;
-      const fairness = Math.max(0, avgShare - share) / Math.max(avgShare, 1e-6) * 0.25;
+      const fairness = Math.max(0, avgShare - share) / Math.max(avgShare, 1e-6) * 0.45;
       if (fairness) {
         reasons.fairness = fairness;
         score += fairness;
@@ -126,7 +130,7 @@ export function scheduleNext(opts: {
     }
 
     // Drive: seed / advocates want to speak; curious agents chase new topics
-    const drive = 0.3 * t.persuasion_drive * (agent.is_seed ? 1.2 : 0.6);
+    const drive = 0.3 * t.persuasion_drive * (agent.is_seed ? 0.9 : 0.6);
     reasons.drive = drive;
     score += drive;
     if (opts.topicJustIntroduced) {
@@ -135,10 +139,22 @@ export function scheduleNext(opts: {
       score += cur;
     }
 
+    // Break ping-pong: penalise the pair, favour outsiders
+    if (pingPongPair) {
+      if (pingPongPair.has(agent.number)) {
+        reasons.ping_pong = -0.7;
+        score -= 0.7;
+      } else {
+        reasons.break_in = 0.35;
+        score += 0.35;
+      }
+    }
+
     // Seed dominance cap
-    if (agent.is_seed && seedShareLast12 > 0.3) {
-      reasons.seed_cap = -0.6;
-      score -= 0.6;
+    if (agent.is_seed && seedShareLast12 > 0.18) {
+      const pen = -Math.min(1.2, (seedShareLast12 - 0.18) * 4 + 0.3);
+      reasons.seed_cap = pen;
+      score += pen;
     }
 
     // Jitter
@@ -154,7 +170,7 @@ export function scheduleNext(opts: {
     const cooldownMs = config.agent_cooldown_seconds * 1000;
     if (eligible && sinceMs < cooldownMs) {
       // Directly addressed agents may respond after half the cooldown.
-      const half = addressedBoost >= 1.0 && sinceMs >= cooldownMs / 2;
+      const half = addressedBoost >= 0.75 && sinceMs >= cooldownMs / 2;
       if (!half) {
         eligible = false;
         ineligibleReason = "cooldown";

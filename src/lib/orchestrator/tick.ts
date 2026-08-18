@@ -114,6 +114,28 @@ export async function runTick(opts: { timeBudgetMs?: number; source?: string } =
         break;
       }
 
+      // Periodic analysis first (batched, deadline-bounded) so it is never starved by turns.
+      if (exp.message_count - exp.last_tag_seq >= cfg.tag_every_n_messages && Date.now() < deadline - 15_000) {
+        try {
+          report.tagged += await tagUntaggedMessages(exp, cfg);
+          exp = { ...exp, last_tag_seq: exp.message_count };
+        } catch (e) {
+          report.notes.push(`tagger error: ${(e as Error).message}`);
+        }
+      }
+      if (exp.message_count - exp.last_judge_seq >= cfg.judge_every_n_messages && Date.now() < deadline - 20_000) {
+        try {
+          await tagUntaggedMessages(exp, cfg);
+          const jr = await runJudgeRound(exp, cfg, active as AgentRow[], deadline - 12_000);
+          report.judged += jr.evaluated;
+          if (jr.complete) exp = { ...exp, last_judge_seq: exp.message_count };
+          else report.notes.push("judge round partial (time)");
+        } catch (e) {
+          report.notes.push(`judge error: ${(e as Error).message}`);
+        }
+      }
+      if (Date.now() >= deadline - 12_000) break;
+
       // Topic cards
       let topicJustIntroduced = false;
       const agentMsgsSinceTopic = exp.message_count - exp.last_topic_seq;
@@ -154,27 +176,6 @@ export async function runTick(opts: { timeBudgetMs?: number; source?: string } =
         exp = { ...exp, message_count: result.message.seq, last_agent_message_at: result.message.created_at };
       }
 
-      // Periodic analysis (cheap-ish, batched)
-      if (Date.now() < deadline - 20_000) {
-        if (exp.message_count - exp.last_tag_seq >= cfg.tag_every_n_messages) {
-          try {
-            report.tagged += await tagUntaggedMessages(exp, cfg);
-            exp = { ...exp, last_tag_seq: exp.message_count };
-          } catch (e) {
-            report.notes.push(`tagger error: ${(e as Error).message}`);
-          }
-        }
-      }
-      if (Date.now() < deadline - 25_000 && exp.message_count - exp.last_judge_seq >= cfg.judge_every_n_messages) {
-        try {
-          // ensure tags exist before judging exposure
-          await tagUntaggedMessages(exp, cfg);
-          report.judged += await runJudgeRound(exp, cfg, active as AgentRow[]);
-          exp = { ...exp, last_judge_seq: exp.message_count };
-        } catch (e) {
-          report.notes.push(`judge error: ${(e as Error).message}`);
-        }
-      }
     }
     return report;
   } catch (e) {
@@ -262,7 +263,7 @@ async function runFinalMemoryPhase(exp: ExperimentRow, deadline: number, report:
     await tagUntaggedMessages(exp, cfg, 30);
     // Force evaluation of every non-seed agent by treating them as un-evaluated.
     await db.from("belief_states").update({ last_evaluated_message_seq: 0 }).eq("experiment_id", exp.id);
-    report.judged += await runJudgeRound(exp, cfg, (agents ?? []) as AgentRow[]);
+    report.judged += (await runJudgeRound(exp, cfg, (agents ?? []) as AgentRow[], deadline - 5_000)).evaluated;
   } catch (e) {
     report.notes.push(`final judge: ${(e as Error).message}`);
   }

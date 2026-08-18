@@ -252,16 +252,26 @@ export function stageFrom(exposed: boolean, engaged: boolean, adoption: number, 
  * last evaluation (or whose exposure flipped). Update belief_states, emit
  * events, and derive estimated influence edges on adoption increases.
  */
-export async function runJudgeRound(exp: ExperimentRow, config: ExperimentConfig, agents: AgentRow[]): Promise<number> {
+export async function runJudgeRound(
+  exp: ExperimentRow,
+  config: ExperimentConfig,
+  agents: AgentRow[],
+  deadlineMs: number = Number.POSITIVE_INFINITY,
+): Promise<{ evaluated: number; complete: boolean }> {
   const db = supabaseAdmin();
   const { data: states } = await db.from("belief_states").select("*").eq("experiment_id", exp.id);
   const stateBy = new Map<string, BeliefStateRow>((states ?? []).map((s) => [s.agent_id, s]));
   let evaluated = 0;
+  let complete = true;
 
   for (const agent of agents) {
     if (agent.is_seed) continue;
     const st = stateBy.get(agent.id);
     if (!st) continue;
+    if (Date.now() > deadlineMs) {
+      complete = false;
+      break;
+    }
 
     // Latest messages by this agent
     const { data: mine } = await db
@@ -374,8 +384,8 @@ export async function runJudgeRound(exp: ExperimentRow, config: ExperimentConfig
     }
   }
 
-  await db.from("experiments").update({ last_judge_seq: exp.message_count }).eq("id", exp.id);
-  return evaluated;
+  if (complete) await db.from("experiments").update({ last_judge_seq: exp.message_count }).eq("id", exp.id);
+  return { evaluated, complete };
 }
 
 /**
