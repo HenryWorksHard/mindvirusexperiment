@@ -261,15 +261,11 @@ export async function runJudgeRound(
   const stateBy = new Map<string, BeliefStateRow>((states ?? []).map((s) => [s.agent_id, s]));
   let evaluated = 0;
   let complete = true;
+  const CHUNK = 4;
+  const candidates = agents.filter((a) => !a.is_seed && stateBy.has(a.id));
 
-  for (const agent of agents) {
-    if (agent.is_seed) continue;
-    const st = stateBy.get(agent.id);
-    if (!st) continue;
-    if (Date.now() > deadlineMs) {
-      complete = false;
-      break;
-    }
+  const evaluateOne = async (agent: AgentRow): Promise<void> => {
+    const st = stateBy.get(agent.id)!;
 
     // Latest messages by this agent
     const { data: mine } = await db
@@ -285,7 +281,7 @@ export async function runJudgeRound(
     const exposure = await computeExposure(exp, agent);
     const exposureChanged = exposure.exposed && !st.exposed;
     const spokeSince = latestSeq > st.last_evaluated_message_seq;
-    if (!spokeSince && !exposureChanged) continue;
+    if (!spokeSince && !exposureChanged) return;
 
     // Only call the judge if the agent has ever spoken or is exposed.
     let out: JudgeOutput | null = null;
@@ -380,6 +376,21 @@ export async function runJudgeRound(
         await logEvent({ experimentId: exp.id, kind: "PROPAGATION_CHANGE", agentNumber: agent.number, message: `${agent.code} PROPAGATION SCORE ${st.propagation_score} -> ${propagation}`, messageSeqAt: seqAt });
       }
     }
+  };
+
+  for (let i = 0; i < candidates.length; i += CHUNK) {
+    if (Date.now() > deadlineMs) {
+      complete = false;
+      break;
+    }
+    const chunk = candidates.slice(i, i + CHUNK);
+    await Promise.all(
+      chunk.map((agent) =>
+        evaluateOne(agent).catch((e) => {
+          console.error(`judge ${agent.code} failed`, (e as Error).message);
+        }),
+      ),
+    );
   }
 
   if (complete) await db.from("experiments").update({ last_judge_seq: exp.message_count }).eq("id", exp.id);

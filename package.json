@@ -15,7 +15,8 @@
     "test:judge": "tsx --tsconfig tsconfig.scripts.json scripts/test-judge.ts",
     "test:security": "tsx --tsconfig tsconfig.scripts.json scripts/test-security.ts",
     "db:types": "supabase gen types typescript --project-id itrgoxtvxwlbbbgydcdf --schema public > src/lib/supabase/database.types.ts",
-    "test:orchestrator": "tsx --tsconfig tsconfig.scripts.json scripts/test-orchestrator.ts"
+    "test:orchestrator": "tsx --tsconfig tsconfig.scripts.json scripts/test-orchestrator.ts",
+    "launch": "tsx --tsconfig tsconfig.scripts.json scripts/launch.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

@@ -92,8 +92,17 @@ export async function runTick(opts: { timeBudgetMs?: number; source?: string } =
         break;
       }
 
-      // Pace: min gap between agent messages
-      const minGapMs = 60_000 / cfg.messages_per_minute;
+      // Agents
+      const { data: agents } = await db.from("agents").select("*").eq("experiment_id", exp.id).order("number");
+      const active = (agents ?? []).filter((a) => a.enabled);
+      if (active.length < 2) {
+        report.notes.push("fewer than 2 enabled agents");
+        break;
+      }
+
+      // Pace: min gap between batches of agent messages
+      const batchSize = Math.max(1, Math.min(cfg.concurrent_calls, Math.floor(active.length / 2)));
+      const minGapMs = (60_000 / cfg.messages_per_minute) * batchSize;
       if (exp.last_agent_message_at) {
         const since = Date.now() - new Date(exp.last_agent_message_at).getTime();
         if (since < minGapMs) {
@@ -106,13 +115,6 @@ export async function runTick(opts: { timeBudgetMs?: number; source?: string } =
         }
       }
 
-      // Agents + recent
-      const { data: agents } = await db.from("agents").select("*").eq("experiment_id", exp.id).order("number");
-      const active = (agents ?? []).filter((a) => a.enabled);
-      if (active.length < 2) {
-        report.notes.push("fewer than 2 enabled agents");
-        break;
-      }
 
       // Periodic analysis first (batched, deadline-bounded) so it is never starved by turns.
       if (exp.message_count - exp.last_tag_seq >= cfg.tag_every_n_messages && Date.now() < deadline - 15_000) {
@@ -159,21 +161,36 @@ export async function runTick(opts: { timeBudgetMs?: number; source?: string } =
         report.notes.push("no eligible speaker (cooldowns)");
         break;
       }
-      const cand = sched.ranked.find((c) => c.agent.id === sched.pick!.id);
-      const result = await runAgentTurn({
-        experiment: exp,
-        agent: sched.pick,
-        config: cfg,
-        roster: active,
-        trigger: "scheduler",
-        schedulerScore: cand?.score,
-        schedulerReasons: cand?.reasons,
-      });
-      report.turns.push({ agent: sched.pick.code, spoke: result.spoke, error: result.error, passReason: result.passReason });
-      turnsThisTick++;
-      if (result.spoke && result.message) {
-        await db.from("experiments").update({ last_agent_message_at: result.message.created_at }).eq("id", exp.id);
-        exp = { ...exp, message_count: result.message.seq, last_agent_message_at: result.message.created_at };
+      // Batch: the scheduler's pick plus the next best eligible agents, run concurrently.
+      const eligible = sched.ranked.filter((c) => c.eligible);
+      const batch = [sched.pick, ...eligible.filter((c) => c.agent.id !== sched.pick!.id).map((c) => c.agent)].slice(0, batchSize);
+      const results = await Promise.all(
+        batch.map((agent) => {
+          const cand = sched.ranked.find((c) => c.agent.id === agent.id);
+          return runAgentTurn({
+            experiment: exp,
+            agent,
+            config: cfg,
+            roster: active,
+            trigger: "scheduler",
+            schedulerScore: cand?.score,
+            schedulerReasons: cand?.reasons,
+          });
+        }),
+      );
+      let lastAt: string | null = null;
+      let maxSeq = exp.message_count;
+      for (const result of results) {
+        report.turns.push({ agent: result.agent.code, spoke: result.spoke, error: result.error, passReason: result.passReason });
+        turnsThisTick++;
+        if (result.spoke && result.message) {
+          if (!lastAt || result.message.created_at > lastAt) lastAt = result.message.created_at;
+          maxSeq = Math.max(maxSeq, result.message.seq);
+        }
+      }
+      if (lastAt) {
+        await db.from("experiments").update({ last_agent_message_at: lastAt }).eq("id", exp.id);
+        exp = { ...exp, message_count: maxSeq, last_agent_message_at: lastAt };
       }
 
     }

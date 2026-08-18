@@ -17,7 +17,8 @@ export const ExperimentConfigSchema = z.object({
   budget_usd: z.number().min(0.1).max(1000).default(15),
   agent_cooldown_seconds: z.number().int().min(0).max(3600).default(45),
   concurrent_calls: z.number().int().min(1).max(4).default(1),
-  turns_per_tick: z.number().int().min(1).max(6).default(2),
+  // number of agent turns attempted per tick (spread across batches of concurrent_calls)
+  turns_per_tick: z.number().int().min(1).max(12).default(2),
 
   // Context management
   context_window_messages: z.number().int().min(4).max(80).default(24),
